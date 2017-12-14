@@ -1,0 +1,41 @@
+---
+# tasks file for create
+- name: Verificando ambiente da vez
+  command: cat /tmp/log
+  register: name
+
+- name: Verificar existencia de um container
+  command: docker inspect "{{ name.stdout }}"
+  register: container
+  ignore_errors: yes
+
+- name: Remove o container caso exista
+  command: docker rmf -f "{{ name.stdout }}"
+  when: container.rc == 0
+
+- name: Realiza a criacao do container Green novo
+  command: docker run -dit --name "{{ name.stdout }}" --net dexterlan --ip 10.0.0.41 --add-host devops.dexter.com.br:192.168.200.100 deploy bash
+  when: container.rc == 0 and name.stdout == "green"
+
+- name: Realiza a criacao do container Blue novo
+  command: docker run -dit --name "{{ name.stdout }}" --net dexterlan --ip 10.0.0.42 --add-host devops.dexter.com.br:192.168.200.100 deploy bash
+  when: container.rc == 0 and name.stdout == "blue"
+
+- name: Habilitar o puppet agent dentro do container
+  command: docker exec "{{ name.stdout }}" /opt/puppetlabs/bin/puppet agent --enable
+
+- name: Executar o puppet dentro do container
+  command: docker exec "{{ name.stdout}}" /opt/puppetlabs/bin/puppet agent -t
+  ignore_errors: yes
+
+- name: Remover a pagina default apache2
+  command: docker exec "{{ name.stdout }}" rm -f /etc/apache2/sites-enabled/000-default.conf
+
+- name: Baixar nova versao do app do gitlab
+  command: docker exec "{{ name.stdout }}" git clone git@devops.dexter.com.br:devops/web.git /var/www/web
+
+- name: Restart do apache2
+  command: docker exec "{{ name.stdout }}" service apache2 restart
+
+- name: Restart do Nginx
+  command: systemctl restart nginx
